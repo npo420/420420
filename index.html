@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>匿名在庫マネージャー — Secure</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+  :root{
+    --bg:#0b0f17;--bg2:#0e1420;--card:#121a29;--edge:#1e2a3d;
+    --fg:#eef1f6;--muted:#9aa9c1;--acc:#6ec3ff;--acc2:#7cf8d2;
+    --good:#4be391;--bad:#ff6b6b;--warn:#ffd166;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",Roboto,Segoe UI,Helvetica,Arial,sans-serif;
+    background:
+      radial-gradient(1000px 600px at -20% -10%, rgba(110,195,255,.18), transparent 60%),
+      radial-gradient(800px 500px at 120% 10%, rgba(124,248,210,.12), transparent 50%),
+      linear-gradient(180deg, var(--bg), var(--bg2));
+  }
+  header{
+    position:sticky;top:0;z-index:10;
+    backdrop-filter:saturate(140%) blur(10px);
+    background:linear-gradient(180deg,rgba(10,14,22,.8),rgba(10,14,22,.35));
+    border-bottom:1px solid var(--edge); padding:10px 12px;
+  }
+  h1{margin:4px 0 2px; font-size:18px; letter-spacing:.2px}
+  .sub{color:var(--muted); font-size:12px}
+  nav{display:flex; gap:8px; margin-top:8px; flex-wrap:wrap}
+  nav button{
+    flex:1 1 auto; padding:10px 12px; border-radius:12px; border:1px solid var(--edge);
+    background:linear-gradient(180deg,#121a29,#0d1421); color:var(--fg); font-weight:600
+  }
+  nav button.active{outline:2px solid var(--acc);}
+  main{padding:14px; max-width:1100px; margin:0 auto}
+  .card{
+    background:linear-gradient(180deg,rgba(18,26,41,.95),rgba(16,22,34,.92));
+    border:1px solid var(--edge); border-radius:16px; padding:14px; margin:10px 0;
+    box-shadow:0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.03);
+  }
+  .grid{display:grid; gap:10px}
+  .g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+  @media (max-width:680px){ .g2,.g3{grid-template-columns:1fr} }
+  label{font-size:12px; color:var(--muted); display:block; margin-bottom:4px}
+  input,select,button{
+    width:100%; padding:12px 12px; border-radius:12px; border:1px solid var(--edge);
+    background:#0b1220; color:var(--fg);
+  }
+  input::placeholder{color:#6b7a94}
+  button{cursor:pointer}
+  .primary{background:linear-gradient(180deg,var(--acc),#4aa9ea); color:#021b2b; font-weight:800; border:none}
+  .danger{background:linear-gradient(180deg,#ff8282,#ff6868); color:#2b0b0b; font-weight:800; border:none}
+  .ghost{background:transparent}
+  table{width:100%; border-collapse:collapse; font-size:13px}
+  th,td{padding:10px 8px; border-bottom:1px solid var(--edge); text-align:right}
+  th:first-child, td:first-child{ text-align:left }
+  .pill{display:inline-block; padding:4px 10px; border-radius:999px; border:1px solid var(--edge); color:var(--muted); font-size:12px}
+  .muted{color:var(--muted)}
+  .stat{padding:10px; border:1px dashed var(--edge); border-radius:12px}
+  .v{font-size:18px; font-weight:800}
+  .good{color:var(--good)} .bad{color:var(--bad)}
+  .row{display:flex; gap:10px; flex-wrap:wrap}
+  .col{flex:1 1 320px}
+  .right{margin-left:auto}
+  footer{padding:16px; text-align:center; color:var(--muted)}
+  #lock{display:grid; place-items:center; min-height:80vh; padding:18px}
+  .lockcard{max-width:520px; width:100%; background:linear-gradient(180deg,rgba(18,26,41,.96),rgba(12,18,30,.96)); border:1px solid var(--edge); border-radius:16px; padding:18px}
+  .titlexl{font-size:20px; margin:2px 0 8px}
+  .modal{position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(5,8,14,.55); backdrop-filter: blur(6px)}
+  .modal .card{max-width:520px; width:92%}
+</style>
+</head>
+<body>
+<header>
+  <div class="row" style="align-items:center">
+    <div>
+      <h1>匿名在庫マネージャー</h1>
+      <div class="sub">暗号化保存 / パスワード必須 / モダンUI</div>
+    </div>
+    <span class="pill right" id="status">未保存</span>
+  </div>
+  <nav id="tabs"></nav>
+</header>
+
+<section id="lock">
+  <div class="lockcard">
+    <div class="titlexl">パスワードでロック中</div>
+    <div class="muted">初回はここで設定／2回目以降は入力してください。</div>
+    <div class="grid g2" style="margin-top:10px">
+      <div>
+        <label>パスワード</label>
+        <input id="pw" type="password" placeholder="••••••••">
+      </div>
+      <div>
+        <label>確認（初回のみ）</label>
+        <input id="pw2" type="password" placeholder="••••••••">
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="primary" style="flex:1" onclick="unlock()">開く</button>
+      <button class="ghost" style="flex:1" onclick="resetAll()">初期化</button>
+    </div>
+    <div id="msg" class="muted" style="margin-top:8px"></div>
+  </div>
+</section>
+
+<main id="app" style="display:none">
+  <section id="tab-dashboard" class="tab"></section>
+  <section id="tab-items" class="tab" style="display:none"></section>
+  <section id="tab-sales" class="tab" style="display:none"></section>
+  <section id="tab-months" class="tab" style="display:none"></section>
+</main>
+
+<div id="modal-sale" class="modal">
+  <div class="card">
+    <h3>販売</h3>
+    <div class="grid g3">
+      <div><label>商品</label><input id="m_sale_sku" disabled></div>
+      <div><label>数量</label><input id="m_sale_qty" type="number" inputmode="numeric" placeholder="1" value="1"></div>
+      <div><label>販売単価</label><input id="m_sale_price" type="number" inputmode="numeric" placeholder="0"></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="primary" onclick="confirmSale()">登録</button>
+      <button onclick="closeModal('modal-sale')">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-stock" class="modal">
+  <div class="card">
+    <h3>入荷</h3>
+    <div class="grid g3">
+      <div><label>商品</label><input id="m_stock_sku" disabled></div>
+      <div><label>数量</label><input id="m_stock_qty" type="number" inputmode="numeric" placeholder="1" value="1"></div>
+      <div><label>仕入れ単価（1個）</label><input id="m_stock_cost" type="number" inputmode="numeric" placeholder="0"></div>
+    </div>
+    <div class="grid g2" style="margin-top:10px">
+      <div><label>人件費（1個）</label><input id="m_stock_labor" type="number" inputmode="numeric" placeholder="0"></div>
+      <div><label>&nbsp;</label><input disabled value="SKUごと固定・後から変更可"></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="primary" onclick="confirmStock()">登録</button>
+      <button onclick="closeModal('modal-stock')">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<footer>端末内にAES-256-GCMで暗号化保存／通信なし</footer>
+
+<script>
+const DB_KEY = "inv_secure_db_v2";
+const META_KEY = "inv_meta_v2";
+let password = "";
+let currentSaleItemId = null;
+let currentStockItemId = null;
+
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+const today = ()=> new Date().toISOString().slice(0,10);
+
+function emptyDB(){ return { items:[], sales:[], createdAt:Date.now(), updatedAt:Date.now() }; }
+
+let db = emptyDB();
+
+async function deriveKey(pass){
+  const base = await crypto.subtle.importKey("raw", enc.encode(pass), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    {name:"PBKDF2", salt:enc.encode("inv-salt-v2"), iterations:200000, hash:"SHA-256"},
+    base,
+    {name:"AES-GCM", length:256}, false, ["encrypt","decrypt"]
+  );
+}
+async function encryptJSON(obj){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(password);
+  const pt = enc.encode(JSON.stringify(obj));
+  const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, pt);
+  const packed = new Uint8Array(iv.length + ct.byteLength);
+  packed.set(iv,0); packed.set(new Uint8Array(ct), iv.length);
+  return btoa(String.fromCharCode(...packed));
+}
+async function decryptJSON(b64){
+  const raw = Uint8Array.from(atob(b64), c=>c.charCodeAt(0));
+  const iv = raw.slice(0,12), ct = raw.slice(12);
+  const key = await deriveKey(password);
+  const pt = await crypto.subtle.decrypt({name:"AES-GCM", iv}, key, ct);
+  return JSON.parse(dec.decode(pt));
+}
+async function save(){
+  db.updatedAt = Date.now();
+  const b64 = await encryptJSON(db);
+  localStorage.setItem(DB_KEY, b64);
+  localStorage.setItem(META_KEY, "1");
+  setStatus("保存済み " + new Date(db.updatedAt).toLocaleString());
+}
+async function load(){
+  const b64 = localStorage.getItem(DB_KEY);
+  if(!b64) return false;
+  try{ db = await decryptJSON(b64); return true; }catch(e){ return false; }
+}
+function setStatus(t){ document.getElementById("status").textContent = t; }
+function hasData(){ return !!localStorage.getItem(META_KEY); }
+function resetAll(){ if(!confirm("初期化します。全データが消えます。")) return; localStorage.removeItem(DB_KEY); localStorage.removeItem(META_KEY); location.reload(); }
+
+async function unlock(){
+  const p = document.getElementById("pw").value;
+  const p2 = document.getElementById("pw2").value;
+  if(!hasData()){
+    if(!p){ return setMsg("初回はパスワードを入力してください"); }
+    if(p.length < 4){ return setMsg("4文字以上を推奨"); }
+    if(p2 && p!==p2){ return setMsg("確認と一致しません"); }
+    password = p; db = emptyDB(); await save(); postUnlock();
+  }else{
+    password = p; const ok = await load(); if(!ok){ return setMsg("パスワードが違います"); } postUnlock();
+  }
+}
+function setMsg(t){ document.getElementById("msg").textContent = t; }
+function postUnlock(){ document.getElementById("lock").style.display = "none"; document.getElementById("app").style.display = ""; renderTabs(); renderAll(); }
+
+const Tabs = [
+  {id:"dashboard", label:"ダッシュボード"},
+  {id:"items", label:"在庫・商品"},
+  {id:"sales", label:"販売履歴"},
+  {id:"months", label:"月別集計"},
+];
+function renderTabs(){
+  const el = document.getElementById("tabs"); el.innerHTML="";
+  Tabs.forEach((t,i)=>{
+    const b = document.createElement("button");
+    b.textContent = t.label; b.className = i===0 ? "active" : "";
+    b.onclick = ()=> switchTab(t.id, b); el.appendChild(b);
+  });
+}
+function switchTab(id, btn){
+  document.querySelectorAll(".tab").forEach(s=> s.style.display="none");
+  document.getElementById("tab-"+id).style.display="";
+  document.querySelectorAll("nav button").forEach(x=> x.classList.remove("active"));
+  btn.classList.add("active"); renderAll();
+}
+function renderAll(){ renderDashboard(); renderItems(); renderSales(); renderMonths(); }
+
+const JPY = v => "¥"+(Math.round(v||0)).toLocaleString("ja-JP");
+function findItem(id){ return db.items.find(x=>x.id===id) }
+function monthKey(iso){ return (iso||today()).slice(0,7); }
+
+function computeTotals(){
+  let revenue=0, cogs=0, labor=0, units=0;
+  for(const s of db.sales){
+    revenue += s.price * s.qty;
+    cogs += (s.cost_at_sale||0) * s.qty;
+    labor += (s.labor_at_sale||0) * s.qty;
+    units += s.qty;
+  }
+  return {revenue,cogs,labor,profit:revenue-cogs-labor, units};
+}
+function computeMonths(){
+  const map = {};
+  for(const s of db.sales){
+    const k = monthKey(s.date);
+    const a = map[k] || (map[k]={revenue:0,cogs:0,labor:0,units:0});
+    a.revenue += s.price * s.qty;
+    a.cogs    += (s.cost_at_sale||0) * s.qty;
+    a.labor   += (s.labor_at_sale||0) * s.qty;
+    a.units   += s.qty;
+  }
+  return Object.entries(map).sort((a,b)=> b[0].localeCompare(a[0])).map(([m,a])=>({month:m, revenue:a.revenue, cogs:a.cogs, labor:a.labor, profit:a.revenue-a.cogs-a.labor, units:a.units}));
+}
+
+function renderDashboard(){
+  const el = document.getElementById("tab-dashboard");
+  const t = computeTotals();
+  const invValue = db.items.reduce((sum,i)=> sum + (i.cost||0)*(i.stock||0), 0);
+  el.innerHTML = `
+  <div class="row">
+    <div class="col">
+      <div class="card">
+        <h3>サマリー</h3>
+        <div class="grid g3">
+          <div class="stat"><div class="muted">売上</div><div class="v">${JPY(t.revenue)}</div></div>
+          <div class="stat"><div class="muted">原価</div><div class="v">${JPY(t.cogs)}</div></div>
+          <div class="stat"><div class="muted">人件費</div><div class="v">${JPY(t.labor)}</div></div>
+        </div>
+        <div class="grid g2" style="margin-top:8px">
+          <div class="stat"><div class="muted">営業利益</div><div class="v ${t.profit>=0?'good':'bad'}">${JPY(t.profit)}</div></div>
+          <div class="stat"><div class="muted">在庫評価額</div><div class="v">${JPY(invValue)}</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>活動</h3>
+        <div class="grid g3">
+          <div class="stat"><div class="muted">販売数量</div><div class="v">${(t.units||0).toLocaleString("ja-JP")}</div></div>
+          <div class="stat"><div class="muted">商品点数</div><div class="v">${(db.items.length||0).toLocaleString("ja-JP")}</div></div>
+          <div class="stat"><div class="muted">販売履歴</div><div class="v">${(db.sales.length||0).toLocaleString("ja-JP")} 件</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card">
+        <h3>クイック操作</h3>
+        <div class="grid g3">
+          <div><label>SKU検索</label><input id="qSku" placeholder="例: A001" oninput="renderItems()"></div>
+          <div><label>在庫ゼロのみ</label><select id="qZero" onchange="renderItems()"><option value="">すべて</option><option value="1">ゼロ</option></select></div>
+          <div class="muted"><br>在庫タブから販売・入荷ができます。</div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>セキュリティ</h3>
+        <div class="grid g2">
+          <div><button onclick="exportEncrypted()">暗号化エクスポート</button></div>
+          <div><input id="impfile" type="file" accept=".bin,application/octet-stream" onchange="importEncrypted(event)"></div>
+        </div>
+        <div class="muted" style="margin-top:6px">端末移行時はエクスポート/インポートを利用</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderItems(){
+  const el = document.getElementById("tab-items");
+  const q = (document.getElementById("qSku")?.value||"").trim().toLowerCase();
+  const zeroOnly = !!document.getElementById("qZero")?.value;
+  const list = db.items.filter(i=> (!q || (i.sku||"").toLowerCase().includes(q)) && (!zeroOnly || (i.stock||0)===0));
+
+  el.innerHTML = `
+  <div class="card">
+    <h3>商品登録</h3>
+    <div class="grid g3">
+      <div><label>SKU/コード</label><input id="it_sku" placeholder="A001"></div>
+      <div><label>参考価格（任意）</label><input id="it_ref" type="number" inputmode="numeric" placeholder="0"></div>
+      <div><label>初期在庫</label><input id="it_stock" type="number" inputmode="numeric" placeholder="0"></div>
+    </div>
+    <div class="grid g3" style="margin-top:8px">
+      <div><label>仕入れ単価（1個）</label><input id="it_cost" type="number" inputmode="numeric" placeholder="0"></div>
+      <div><label>人件費（1個）</label><input id="it_labor" type="number" inputmode="numeric" placeholder="0"></div>
+      <div><label>&nbsp;</label><button class="primary" onclick="addItem()">追加</button></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>在庫一覧</h3>
+    <table><thead>
+      <tr><th>SKU</th><th>在庫</th><th>仕入れ単価</th><th>人件費/個</th><th>参考価格</th><th></th></tr>
+    </thead><tbody id="item-rows"></tbody></table>
+  </div>`;
+
+  const rows = list.map(i=>`
+    <tr>
+      <td>${i.sku}</td>
+      <td>${(i.stock||0).toLocaleString("ja-JP")}</td>
+      <td>${JPY(i.cost||0)}</td>
+      <td>${JPY(i.labor||0)}</td>
+      <td>${i.ref? JPY(i.ref): "-"}</td>
+      <td>
+        <div class="row">
+          <button onclick="openStock('${i.id}')">入荷</button>
+          <button class="primary" onclick="openSale('${i.id}')">販売</button>
+          <button class="danger" onclick="editItem('${i.id}')">編集</button>
+        </div>
+      </td>
+    </tr>`).join("");
+  document.getElementById("item-rows").innerHTML = rows || `<tr><td colspan="6" class="muted">未登録</td></tr>`;
+}
+function addItem(){
+  const sku = document.getElementById("it_sku").value.trim();
+  const ref = parseFloat(document.getElementById("it_ref").value)||0;
+  const stock = parseInt(document.getElementById("it_stock").value)||0;
+  const cost = parseFloat(document.getElementById("it_cost").value)||0;
+  const labor= parseFloat(document.getElementById("it_labor").value)||0;
+  if(!sku) return alert("SKUは必須です");
+  db.items.push({id:crypto.randomUUID(), sku, ref, stock, cost, labor});
+  ["it_sku","it_ref","it_stock","it_cost","it_labor"].forEach(id=> document.getElementById(id).value="");
+  save(); renderItems(); renderDashboard();
+}
+function editItem(id){
+  const it = findItem(id); if(!it) return;
+  const sku = prompt("SKU", it.sku)||it.sku;
+  const ref = parseFloat(prompt("参考価格(任意)", it.ref??0))||0;
+  const cost= parseFloat(prompt("仕入れ単価", it.cost??0))||0;
+  const labor=parseFloat(prompt("人件費/個", it.labor??0))||0;
+  const stock=parseInt(prompt("在庫", it.stock??0))||0;
+  Object.assign(it,{sku,ref,cost,labor,stock});
+  save(); renderItems(); renderDashboard();
+}
+function openSale(id){
+  currentSaleItemId = id;
+  const it = findItem(id); if(!it) return;
+  document.getElementById("m_sale_sku").value = it.sku;
+  document.getElementById("m_sale_qty").value = 1;
+  document.getElementById("m_sale_price").value = it.ref||0;
+  openModal("modal-sale");
+}
+function confirmSale(){
+  const qty = parseInt(document.getElementById("m_sale_qty").value)||0;
+  const price = parseFloat(document.getElementById("m_sale_price").value);
+  if(qty<=0 || !price){ return alert("数量と販売単価は必須です"); }
+  const it = findItem(currentSaleItemId); if(!it) return;
+  if((it.stock||0) < qty && !confirm("在庫を下回ります。続行しますか？")) return;
+  it.stock = (it.stock||0) - qty;
+  db.sales.push({
+    id:crypto.randomUUID(), date:today(), itemId:it.id, qty, price,
+    cost_at_sale: it.cost||0, labor_at_sale: it.labor||0
+  });
+  closeModal("modal-sale"); save(); renderItems(); renderDashboard(); renderSales(); renderMonths();
+}
+function openStock(id){
+  currentStockItemId = id;
+  const it = findItem(id); if(!it) return;
+  document.getElementById("m_stock_sku").value = it.sku;
+  document.getElementById("m_stock_qty").value = 1;
+  document.getElementById("m_stock_cost").value = "";
+  document.getElementById("m_stock_labor").value = "";
+  openModal("modal-stock");
+}
+function confirmStock(){
+  const qty = parseInt(document.getElementById("m_stock_qty").value)||0;
+  if(qty<=0) return alert("数量は1以上");
+  const it = findItem(currentStockItemId); if(!it) return;
+  const cost = document.getElementById("m_stock_cost").value.trim();
+  const labor= document.getElementById("m_stock_labor").value.trim();
+  if(cost!=="") it.cost = parseFloat(cost)||0;
+  if(labor!=="") it.labor= parseFloat(labor)||0;
+  it.stock = (it.stock||0) + qty;
+  closeModal("modal-stock"); save(); renderItems(); renderDashboard();
+}
+function openModal(id){ document.getElementById(id).style.display="flex"; }
+function closeModal(id){ document.getElementById(id).style.display="none"; }
+
+function renderSales(){
+  const el = document.getElementById("tab-sales");
+  const rows = db.sales.slice().reverse().map(s=>{
+    const it = findItem(s.itemId) || {sku:"(削除済み)"};
+    const amount = s.qty * s.price;
+    const cogs = s.qty * (s.cost_at_sale||0);
+    const lc = s.qty * (s.labor_at_sale||0);
+    const prof = amount - cogs - lc;
+    return `<tr>
+      <td>${s.date}</td>
+      <td>${it.sku}</td>
+      <td>${s.qty}</td>
+      <td>${JPY(s.price)}</td>
+      <td>${JPY(amount)}</td>
+      <td>${JPY(cogs)}</td>
+      <td>${JPY(lc)}</td>
+      <td class="${prof>=0?"good":"bad"}">${JPY(prof)}</td>
+    </tr>`;
+  }).join("");
+  el.innerHTML = `
+  <div class="card">
+    <h3>販売履歴</h3>
+    <table>
+      <thead><tr><th>日付</th><th>SKU</th><th>数量</th><th>単価</th><th>売上</th><th>原価</th><th>人件費</th><th>利益</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="8" class="muted">履歴なし</td></tr>`}</tbody>
+    </table>
+  </div>`;
+}
+
+function computeMonths(){
+  const map = {};
+  for(const s of db.sales){
+    const k = (s.date||today()).slice(0,7);
+    const a = map[k] || (map[k]={revenue:0,cogs:0,labor:0,units:0});
+    a.revenue += s.price * s.qty;
+    a.cogs    += (s.cost_at_sale||0) * s.qty;
+    a.labor   += (s.labor_at_sale||0) * s.qty;
+    a.units   += s.qty;
+  }
+  return Object.entries(map).sort((a,b)=> b[0].localeCompare(a[0])).map(([m,a])=>({month:m, revenue:a.revenue, cogs:a.cogs, labor:a.labor, profit:a.revenue-a.cogs-a.labor, units:a.units}));
+}
+function renderMonths(){
+  const el = document.getElementById("tab-months");
+  const arr = computeMonths();
+  const rows = arr.map(m=>`
+    <tr>
+      <td>${m.month}</td>
+      <td>${m.units}</td>
+      <td>${JPY(m.revenue)}</td>
+      <td>${JPY(m.cogs)}</td>
+      <td>${JPY(m.labor)}</td>
+      <td class="${m.profit>=0?'good':'bad'}">${JPY(m.profit)}</td>
+    </tr>`).join("");
+  el.innerHTML = `
+  <div class="card">
+    <h3>月別集計（合計のみ）</h3>
+    <table>
+      <thead><tr><th>年月</th><th>販売数</th><th>売上</th><th>原価</th><th>人件費</th><th>利益</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="6" class="muted">まだデータがありません</td></tr>`}</tbody>
+    </table>
+  </div>`;
+}
+
+function init(){ setStatus("ロック中"); }
+init();
+</script>
+</body>
+</html>
